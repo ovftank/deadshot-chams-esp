@@ -1,16 +1,17 @@
 // ==UserScript==
 // @name         Deadshot.io Chams & Aimbot
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
-// @description  Simple Chams & Aimbot for Deadshot.io
+// @version      1.0.1
+// @description  s1mple chams & aimbot for deadshot.io
 // @author       ovftank
 // @match        *://*deadshot.io/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deadshot.io
 // @grant        unsafeWindow
 // @run-at       document-start
 // @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/572110/Deadshotio%20Chams%20%20Aimbot.user.js
+// @updateURL https://update.greasyfork.org/scripts/572110/Deadshotio%20Chams%20%20Aimbot.meta.js
 // ==/UserScript==
-
 (() => {
     'use strict';
 
@@ -79,7 +80,7 @@
     const worldToScreen = (pos) => {
         if (!viewProjMatrix) return null;
         const clip = multiplyMatrixVec4(viewProjMatrix, [...pos, 1]);
-        if (clip[3] <= 0) return null;
+        if (clip[3] <= 0.001) return null;
         return [(clip[0] / clip[3] + 1) * 0.5 * window.innerWidth, (1 - clip[1] / clip[3]) * 0.5 * window.innerHeight];
     };
 
@@ -115,6 +116,7 @@
                     pos = [boneData[b22 + 12], boneData[b22 + 13] + config.headOffset, boneData[b22 + 14]];
                 }
             }
+            if (!pos.every(Number.isFinite)) return;
 
             const playerKey = `${vertexCount}_${model[12].toFixed(1)}_${model[14].toFixed(1)}`;
             let finalPos = [...pos];
@@ -131,7 +133,10 @@
                 }
                 PLAYER_HISTORY.set(playerKey, { last: pos, vel: hist.vel, tick: now });
             }
-            detectedPlayers.push({ position: finalPos });
+
+            if (finalPos.every(Number.isFinite)) {
+                detectedPlayers.push({ position: finalPos });
+            }
         };
     }
 
@@ -141,13 +146,16 @@
     const applyAimbot = (orig, isY) => {
         if (isAiming && currentTarget) {
             const sPos = worldToScreen(currentTarget.position);
-            if (sPos) {
+            if (sPos && Number.isFinite(sPos[0]) && Number.isFinite(sPos[1])) {
                 const delta = sPos[isY ? 1 : 0] - (window[isY ? 'innerHeight' : 'innerWidth'] / 2);
-                const sens = config.sensitivity;
-                return Math.round(delta * sens);
+                let movement = Math.round(delta * config.sensitivity);
+                if (Number.isFinite(movement)) {
+                    const MAX_SNAP = 65;
+                    return Math.max(-MAX_SNAP, Math.min(MAX_SNAP, movement));
+                }
             }
         }
-        return orig;
+        return typeof orig === 'number' ? orig : 0;
     };
 
     Object.defineProperty(MouseEvent.prototype, 'movementX', { get: function () { return applyAimbot(originalX.call(this), false); } });
@@ -241,6 +249,7 @@
             });
             currentTarget = best;
             detectedPlayers.length = 0;
+
             if (PLAYER_HISTORY.size > 50) {
                 const now = Date.now();
                 for (const [id, data] of PLAYER_HISTORY) if (now - data.tick > 2000) PLAYER_HISTORY.delete(id);
